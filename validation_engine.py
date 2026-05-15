@@ -52,7 +52,6 @@ class ValidationReport:
     export_allowed: bool = False
     block_reason: str = ""
     suspicious_rows: list = field(default_factory=list)   # indices
-    duplicate_rows: list = field(default_factory=list)    # indices
     warnings: list = field(default_factory=list)
     total_transactions: int = 0
     balance_mismatches: int = 0
@@ -67,7 +66,6 @@ class ValidationReport:
             "block_reason": self.block_reason,
             "total_transactions": self.total_transactions,
             "balance_mismatches": self.balance_mismatches,
-            "duplicate_rows_found": len(self.duplicate_rows),
             "suspicious_rows_found": len(self.suspicious_rows),
             "is_scanned_pdf": self.is_scanned_pdf,
             "warnings": self.warnings,
@@ -320,49 +318,11 @@ class BalanceContinuityValidator:
 
 
 # ===========================================================================
-# Layer 4 — Duplicate Validator
+# Layer 4 — Duplicate Validator (DISABLED)
+# Duplicate detection has been removed because repeating genuine transactions
+# (e.g. standing orders, same-amount credits on the same date) were being
+# incorrectly classified and dropped.
 # ===========================================================================
-class DuplicateValidator:
-    def validate(self, df: pd.DataFrame,
-                 date_col: Optional[str],
-                 narration_col: Optional[str],
-                 balance_col: Optional[str],
-                 ref_col: Optional[str] = None,
-                 debit_col: Optional[str] = None,
-                 credit_col: Optional[str] = None) -> tuple[CheckResult, list]:
-
-        key_cols = [c for c in [date_col, narration_col, balance_col, ref_col, debit_col, credit_col]
-                    if c and c in df.columns]
-
-        if not key_cols:
-            return (
-                CheckResult("Duplicate Check", False,
-                            "Insufficient columns for duplicate detection.", severity="warning"),
-                []
-            )
-
-        # We create a temporary comparison string to find exact duplicates across all key columns
-        subset = df[key_cols].astype(str).apply(lambda col: col.str.strip().str.lower())
-        dup_mask = subset.duplicated(keep="first")
-        dup_indices = df.index[dup_mask].tolist()
-
-        if not dup_indices:
-            return (
-                CheckResult("Duplicate Check", True,
-                            "No duplicate transactions detected.", severity="info"),
-                []
-            )
-
-        return (
-            CheckResult(
-                "Duplicate Check",
-                passed=len(dup_indices) < 5,   # small number is a warning, not a blocker
-                message=f"{len(dup_indices)} potential duplicate row(s) detected.",
-                detail="Duplicates (identical in all columns including Ref No) will be removed.",
-                severity="warning" if len(dup_indices) < 10 else "error",
-            ),
-            dup_indices,
-        )
 
 
 # ===========================================================================
@@ -504,9 +464,8 @@ class OCRDetector:
 CONFIDENCE_WEIGHTS = {
     "Column Validation":        20,
     "Date Validation":          15,
-    "Balance Continuity":       25,
-    "Duplicate Check":          10,
-    "Transaction Count Sanity": 15,
+    "Balance Continuity":       30,
+    "Transaction Count Sanity": 20,
     "Narration Quality":         5,
     "OCR Detection":            10,
 }
@@ -557,7 +516,6 @@ class ValidationEngine:
         self.col_validator    = ColumnValidator()
         self.date_validator   = DateValidator()
         self.bal_validator    = BalanceContinuityValidator()
-        self.dup_validator    = DuplicateValidator()
         self.sanity_check     = TransactionSanityCheck()
         self.narration_val    = NarrationValidator()
         self.ocr_detector     = OCRDetector()
@@ -617,18 +575,6 @@ class ValidationEngine:
         report.checks.append(bal_result)
         report.suspicious_rows = suspicious_rows
         report.balance_mismatches = mismatch_count
-
-        # --- Duplicate Detection & Removal ---
-        ref_col = self.col_validator.resolve_column_name(df, "reference")
-        dup_result, dup_indices = self.dup_validator.validate(
-            df, date_col, narration_col, balance_col, ref_col, debit_col, credit_col
-        )
-        report.checks.append(dup_result)
-        report.duplicate_rows = dup_indices
-
-        if dup_indices:
-            df = df.drop(index=dup_indices).reset_index(drop=True)
-            report.total_transactions = len(df)
 
         # --- Transaction Count Sanity ---
         sanity_result = self.sanity_check.validate(df, page_count)
