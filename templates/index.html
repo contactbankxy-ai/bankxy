@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BANKXY | Secure Bank Statement Converter</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#06b6d4', // Cyan 500
+                        secondary: '#3b82f6', // Blue 500
+                        darkbg: '#0f172a', // Slate 900
+                        cardbg: '#1e293b', // Slate 800
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase SDKs (using compat for simpler vanilla JS setup without bundler) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-auth-compat.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .drag-active {
+            border-color: #06b6d4 !important;
+            background-color: rgba(6, 182, 212, 0.1) !important;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* Loader */
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #06b6d4;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite;
+            /* Safari */
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .toast-enter {
+            animation: slideInRight 0.3s forwards;
+        }
+
+        .toast-leave {
+            animation: fadeOut 0.3s forwards;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+            }
+
+            to {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body class="antialiased min-h-screen flex flex-col">
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2"></div>
+
+    <!-- Navbar -->
+    <nav class="glass-panel sticky top-0 z-40 px-6 py-4 flex justify-between items-center shadow-lg">
+        <div class="flex items-center gap-2 cursor-pointer" onclick="showSection('upload-section')">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="BANKXY Logo" class="h-12 w-auto">
+            <span class="text-xl font-bold tracking-wider text-white">BANKXY</span>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <div id="auth-section" class="flex items-center gap-4">
+                <button onclick="showAuthModal()" id="btn-login"
+                    class="text-sm font-medium text-slate-300 hover:text-white transition-colors">Log In</button>
+                <button onclick="showAuthModal()" id="btn-signup"
+                    class="bg-gradient-to-r from-primary to-secondary text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-lg hover:shadow-cyan-500/25 transition-all">Sign
+                    Up Free</button>
+
+                <!-- Logged In State (Hidden by default) -->
+                <div id="user-profile" class="hidden relative group">
+                    <button class="flex items-center gap-2 text-sm font-medium text-slate-200">
+                        <div
+                            class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-primary border border-slate-600">
+                            <i class="fa-solid fa-user"></i>
+                        </div>
+                        <span id="user-email" class="hidden md:inline-block">user@example.com</span>
+                        <i class="fa-solid fa-chevron-down text-xs"></i>
+                    </button>
+                    <!-- Dropdown -->
+                    <div
+                        class="absolute right-0 mt-2 w-48 glass-panel rounded-xl shadow-xl border border-slate-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 py-2">
+                        <div class="px-4 py-2 border-b border-slate-700">
+                            <p class="text-xs text-slate-400">Signed in as</p>
+                            <p id="dropdown-email" class="text-sm font-medium truncate">user@example.com</p>
+                        </div>
+                        <button onclick="handleLogout()"
+                            class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-slate-800 transition-colors">
+                            <i class="fa-solid fa-arrow-right-from-bracket mr-2"></i> Sign out
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow flex flex-col items-center p-6 relative">
+
+        <!-- Auth Banner -->
+        <div id="guest-banner"
+            class="w-full max-w-4xl bg-gradient-to-r from-indigo-900/40 to-slate-800/40 border border-indigo-500/30 rounded-xl p-3 mb-8 flex justify-between items-center animate-pulse shadow-sm shadow-indigo-500/10">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-shield-halved text-indigo-400"></i>
+                <p class="text-sm text-indigo-100">Sign in to save your conversion history and access advanced features.
+                </p>
+            </div>
+            <button onclick="showAuthModal()"
+                class="text-sm text-white font-medium bg-indigo-500/20 hover:bg-indigo-500/40 px-3 py-1 rounded transition-colors">Sign
+                In</button>
+        </div>
+
+        <!-- UPLOAD SECTION -->
+        <section id="upload-section" class="w-full max-w-4xl flex flex-col items-center transition-all duration-500">
+            <div class="text-center mb-10">
+                <h1
+                    class="text-4xl md:text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+                    Transform Bank Statements Instantly
+                </h1>
+                <p class="text-slate-400 text-lg max-w-2xl mx-auto">
+                    Securely convert PDF statements into structured Excel formats.
+                </p>
+            </div>
+
+            <!-- Upload Card -->
+            <div class="glass-panel w-full rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-secondary"></div>
+
+                <form id="upload-form" class="space-y-6" onsubmit="event.preventDefault(); handleUpload();">
+
+                    <!-- Drag and Drop Zone -->
+                    <div id="drop-zone"
+                        class="border-2 border-dashed border-slate-600 rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-all duration-300 group">
+                        <input type="file" id="pdf-file" accept=".pdf" class="hidden" required>
+                        <div
+                            class="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-4 group-hover:scale-110 group-hover:bg-cyan-900/30 transition-transform">
+                            <i
+                                class="fa-regular fa-file-pdf text-3xl text-slate-400 group-hover:text-primary transition-colors"></i>
+                        </div>
+                        <h3 class="text-xl font-semibold text-white mb-2" id="file-name-display">Drag & Drop your PDF
+                        </h3>
+                        <p class="text-sm text-slate-400 mb-4">or click to browse from your device</p>
+                        <p class="text-xs text-slate-500"><i class="fa-solid fa-lock mr-1"></i> Files are processed
+                            securely and deleted immediately</p>
+                    </div>
+
+                    <!-- Options Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-1">Bank Format</label>
+                            <select id="bank-select"
+                                class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-2.5 outline-none transition-colors">
+                                <option value="auto" selected>✨ Auto Detect (Recommended)</option>
+                                <option value="hdfc">HDFC Bank</option>
+                                <option value="icici">ICICI Bank</option>
+                                <option value="sbi">State Bank of India (SBI)</option>
+                                <option value="axis">Axis Bank</option>
+                                <option value="kotak">Kotak Mahindra Bank</option>
+                                <option value="pnb">Punjab National Bank (PNB)</option>
+                                <option value="bob">Bank of Baroda</option>
+                                <option value="unionbank">Union Bank</option>
+                                <option value="canara">Canara Bank</option>
+                                <option value="others">Others</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-300 mb-1">PDF Password <span
+                                    class="text-slate-500 text-xs">(If encrypted)</span></label>
+                            <div class="relative">
+                                <input type="password" id="pdf-password"
+                                    class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-2.5 outline-none transition-colors"
+                                    placeholder="Leave blank if none">
+                                <button type="button" onclick="togglePassword()"
+                                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white">
+                                    <i id="eye-icon" class="fa-regular fa-eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" id="btn-submit"
+                        class="w-full bg-gradient-to-r from-primary to-secondary hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-cyan-500/20 transform transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
+                        <span>Convert Statement</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+
+                    <!-- Progress Area (Hidden initially) -->
+                    <div id="progress-area" class="hidden flex-col items-center justify-center py-4">
+                        <div class="loader mb-3"></div>
+                        <div class="flex justify-between w-full px-1 mb-1">
+                            <p id="progress-text" class="text-sm text-primary font-medium">Uploading document...</p>
+                            <p id="progress-pct" class="text-sm text-primary font-bold">0%</p>
+                        </div>
+                        <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden shadow-inner">
+                            <div id="progress-bar"
+                                class="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-300"
+                                style="width: 0%"></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Result Section (Hidden initially) -->
+            <div id="result-section" class="w-full mt-8 hidden">
+
+                <!-- BLOCKED PANEL -->
+                <div id="blocked-panel" class="hidden glass-panel rounded-2xl p-6 border border-red-500/40 mb-4">
+                    <div class="flex items-start gap-4">
+                        <div
+                            class="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <i class="fa-solid fa-ban text-red-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-red-300">Export Blocked — Low Confidence</h3>
+                            <p id="blocked-reason" class="text-sm text-slate-300 mt-1"></p>
+                            <p class="text-xs text-slate-500 mt-2">BANKXY prioritises accuracy. We will not export
+                                potentially incorrect financial data.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUCCESS PANEL -->
+                <div id="success-panel" class="hidden glass-panel rounded-2xl p-6 border border-green-500/30 relative">
+                    <div
+                        class="absolute -top-3 -right-3 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-lg shadow-green-500/40">
+                        <i class="fa-solid fa-check text-white text-sm"></i>
+                    </div>
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold text-white">Conversion Successful</h3>
+                            <p class="text-sm text-slate-400 mt-1">Detected Bank: <span
+                                    class="text-white font-medium bg-slate-700 px-2 py-0.5 rounded"
+                                    id="detected-bank-badge">Auto</span></p>
+                        </div>
+                        <button id="btn-download"
+                            class="bg-green-600 hover:bg-green-500 text-white px-5 py-2.5 rounded-lg font-medium shadow-lg shadow-green-600/20 transition-all flex items-center gap-2">
+                            <i class="fa-solid fa-download"></i> Download Excel
+                        </button>
+                    </div>
+
+                    <div class="mt-4 flex justify-center">
+                        <button onclick="resetUpload()"
+                            class="text-sm text-slate-400 hover:text-white transition-colors"><i
+                                class="fa-solid fa-rotate-right mr-1"></i> Convert Another File</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trust Badges -->
+            <div
+                class="mt-12 flex flex-wrap justify-center gap-8 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+                <div class="flex items-center gap-2"><i class="fa-solid fa-shield-check text-2xl"></i><span
+                        class="text-sm font-medium">Bank-Grade Security</span></div>
+                <div class="flex items-center gap-2"><i class="fa-solid fa-server text-2xl"></i><span
+                        class="text-sm font-medium">Auto Deletion</span></div>
+                <div class="flex items-center gap-2"><i class="fa-brands fa-python text-2xl"></i><span
+                        class="text-sm font-medium">Advanced Parsing Engine</span></div>
+            </div>
+        </section>
+
+        <!-- DASHBOARD SECTION (Removed for normal users) -->
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-900 mt-auto py-8">
+        <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-2 opacity-80">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="BANKXY Logo" class="h-10 w-auto">
+                <span class="font-bold tracking-wider text-white">BANKXY</span>
+            </div>
+            <div class="flex gap-6 text-sm text-slate-400">
+                <a href="/privacy" class="hover:text-primary transition-colors">Privacy Policy</a>
+                <a href="/terms" class="hover:text-primary transition-colors">Terms of Service</a>
+                <button onclick="showContactModal()" class="hover:text-primary transition-colors">Contact</button>
+            </div>
+            <div class="text-slate-500 text-sm">
+                &copy; 2026 BANKXY. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <!-- Auth Modal Overlay -->
+    <div id="auth-modal"
+        class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+        <div class="glass-panel w-full max-w-md p-8 rounded-2xl shadow-2xl border border-slate-700 transform scale-95 transition-transform duration-300"
+            id="auth-modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-white">Welcome to BANKXY</h3>
+                <button onclick="closeAuthModal()" class="text-slate-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <p class="text-slate-400 text-sm mb-6">Sign in to securely access your data and advanced features.</p>
+
+            <div class="space-y-4">
+                <button onclick="googleLogin()" class="w-full bg-white text-slate-900 hover:bg-slate-200 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors">
+                    <img src="https://www.svgrepo.com/show/475656/google-color.svg" class="w-5 h-5" alt="Google">
+                    Continue with Google
+                </button>
+            </div>
+            <p class="text-center text-xs text-slate-500 mt-6">Firebase Authentication is active.</p>
+        </div>
+    </div>
+
+    <!-- Contact Modal Overlay -->
+    <div id="contact-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+        <div class="glass-panel w-full max-w-md p-8 rounded-2xl shadow-2xl border border-slate-700 transform scale-95 transition-transform duration-300" id="contact-modal-content">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-white">Contact Us</h3>
+                <button onclick="closeContactModal()" class="text-slate-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <p class="text-slate-400 text-sm mb-6">Reach out to us at <a href="mailto:contact.bankxy@gmail.com" class="text-primary hover:underline">contact.bankxy@gmail.com</a> or use the form below to send an email directly to our support team.</p>
+
+            <form action="https://formsubmit.co/contact.bankxy@gmail.com" method="POST" class="space-y-4">
+                <input type="hidden" name="_subject" value="New message from BANKXY Contact Form">
+                <input type="hidden" name="_captcha" value="false">
+                <input type="hidden" name="_next" value="http://localhost:5000/">
+                
+                <div>
+                    <input type="email" name="email" placeholder="Your Email address" class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-3 outline-none" required>
+                </div>
+                <div>
+                    <textarea name="message" placeholder="How can we help you?" rows="4" class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-3 outline-none resize-none" required></textarea>
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-primary to-secondary hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-3 rounded-xl shadow-lg transition-all">
+                    Send Message
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // --- UI Interactions ---
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            let icon = '<i class="fa-solid fa-check-circle text-green-400"></i>';
+            let borderClass = 'border-green-500/50';
+
+            if (type === 'error') {
+                icon = '<i class="fa-solid fa-circle-exclamation text-red-400"></i>';
+                borderClass = 'border-red-500/50';
+            } else if (type === 'info') {
+                icon = '<i class="fa-solid fa-circle-info text-primary"></i>';
+                borderClass = 'border-cyan-500/50';
+            }
+
+            toast.className = `glass-panel px-4 py-3 rounded-lg shadow-lg border-l-4 ${borderClass} flex items-center gap-3 toast-enter min-w-[250px]`;
+            toast.innerHTML = `${icon} <span class="text-sm font-medium text-white">${message}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.replace('toast-enter', 'toast-leave');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function showSection(sectionId) {
+            document.getElementById('upload-section').classList.add('hidden');
+
+            const target = document.getElementById(sectionId);
+            if (target) {
+                target.classList.remove('hidden');
+                target.classList.add('flex');
+            }
+        }
+
+        function togglePassword() {
+            const input = document.getElementById('pdf-password');
+            const icon = document.getElementById('eye-icon');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        }
+
+        // --- Drag and Drop Logic ---
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('pdf-file');
+        const fileNameDisplay = document.getElementById('file-name-display');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-active');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-active');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-active');
+
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                updateFileName();
+            }
+        });
+
+        fileInput.addEventListener('change', updateFileName);
+
+        function updateFileName() {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith('.pdf')) {
+                    showToast("Please upload a valid PDF file.", "error");
+                    fileInput.value = "";
+                    fileNameDisplay.textContent = "Drag & Drop your PDF";
+                    return;
+                }
+                fileNameDisplay.textContent = file.name;
+                fileNameDisplay.classList.add('text-primary');
+            }
+        }
+
+        // --- Core Upload & Processing Logic ---
+        let currentExcelBase64 = null;
+        let currentFilename = "Statement.xlsx";
+
+        async function handleUpload() {
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showToast("Please select a PDF file first.", "error");
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const bank = document.getElementById('bank-select').value;
+            const password = document.getElementById('pdf-password').value;
+
+            const formData = new FormData();
+            formData.append("pdf_file", file);
+            formData.append("bank", bank);
+            if (password) formData.append("password", password);
+
+            const submitBtn = document.getElementById('btn-submit');
+            const progressArea = document.getElementById('progress-area');
+            const resultSection = document.getElementById('result-section');
+            const progressText = document.getElementById('progress-text');
+            const progressBar = document.getElementById('progress-bar');
+            const progressPct = document.getElementById('progress-pct');
+
+            submitBtn.classList.add('hidden');
+            progressArea.classList.remove('hidden');
+            progressArea.classList.add('flex');
+            resultSection.classList.add('hidden');
+
+            let simulatedPct = 0;
+            const progressInterval = setInterval(() => {
+                if (simulatedPct < 90) {
+                    simulatedPct += Math.floor(Math.random() * 5) + 2; // Jump by 2-6%
+                } else if (simulatedPct < 99) {
+                    simulatedPct += 1; // Slow down at the end
+                }
+
+                progressBar.style.width = simulatedPct + "%";
+                progressPct.innerText = simulatedPct + "%";
+
+                if (simulatedPct < 30) progressText.innerText = "Uploading document securely...";
+                else if (simulatedPct < 60) progressText.innerText = "Detecting bank format...";
+                else if (simulatedPct < 85) progressText.innerText = "Parsing transactions...";
+                else progressText.innerText = "Finalizing data...";
+            }, 350); // Updates every 350ms, taking ~6-7 seconds to reach 99%
+
+            try {
+                const response = await fetch('/api/convert', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                clearInterval(progressInterval);
+                progressBar.style.width = "100%";
+                progressPct.innerText = "100%";
+                progressText.innerText = "Complete!";
+
+                if (data.status === "success") {
+                    setTimeout(() => {
+                        showSuccessResult(data);
+                        showToast(`Processed: ${data.detected_bank}`, 'success');
+                    }, 400);
+                } else if (data.status === "blocked") {
+                    setTimeout(() => {
+                        showBlockedResult(data);
+                        showToast("Export blocked.", 'error');
+                    }, 400);
+                } else {
+                    throw new Error(data.message || "Failed to process the statement.");
+                }
+            } catch (error) {
+                clearInterval(progressInterval);
+                showToast(error.message, "error");
+                resetUploadUI();
+            }
+        }
+
+        // Validation checks rendering removed
+
+        function showSuccessResult(data) {
+            document.getElementById('progress-area').classList.add('hidden');
+            document.getElementById('progress-area').classList.remove('flex');
+            document.getElementById('result-section').classList.remove('hidden');
+            if (document.getElementById('blocked-panel')) document.getElementById('blocked-panel').classList.add('hidden');
+            document.getElementById('success-panel').classList.remove('hidden');
+
+            document.getElementById('detected-bank-badge').innerText = data.detected_bank;
+            currentExcelBase64 = data.excel_base64;
+            currentFilename = data.filename;
+
+            document.getElementById('btn-download').onclick = () => {
+                downloadBase64Excel(currentExcelBase64, currentFilename);
+                showToast("Download started!", "success");
+            };
+        }
+
+        function showBlockedResult(data) {
+            document.getElementById('progress-area').classList.add('hidden');
+            document.getElementById('progress-area').classList.remove('flex');
+            document.getElementById('result-section').classList.remove('hidden');
+            document.getElementById('success-panel').classList.add('hidden');
+            document.getElementById('blocked-panel').classList.remove('hidden');
+            document.getElementById('blocked-report-panel').classList.remove('hidden');
+
+            document.getElementById('blocked-reason').innerText = data.message || "Validation failed.";
+            const vr = data.validation_report || {};
+            renderChecks(document.getElementById('blocked-validation-checks'), vr.checks || []);
+        }
+
+        function resetUploadUI() {
+            document.getElementById('btn-submit').classList.remove('hidden');
+            document.getElementById('progress-area').classList.add('hidden');
+            document.getElementById('progress-area').classList.remove('flex');
+            document.getElementById('progress-bar').style.width = "0%";
+        }
+
+        function resetUpload() {
+            resetUploadUI();
+            document.getElementById('result-section').classList.add('hidden');
+            fileInput.value = "";
+            fileNameDisplay.textContent = "Drag & Drop your PDF";
+            fileNameDisplay.classList.remove('text-primary');
+            document.getElementById('pdf-password').value = "";
+        }
+
+        function downloadBase64Excel(base64Data, filename) {
+            const link = document.createElement("a");
+            link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64Data}`;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Dashboard logic removed for normal users
+
+        // --- Real Firebase Auth Setup ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyD604riyNRDDWdqPArwR8VPdVC37IqSx38",
+            authDomain: "bankxy.firebaseapp.com",
+            projectId: "bankxy",
+            storageBucket: "bankxy.firebasestorage.app",
+            messagingSenderId: "678110051774",
+            appId: "1:678110051774:web:4bcf4e54aee7b4f26ecdef",
+            measurementId: "G-7TRFW31301"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        let currentUser = null;
+
+        auth.onAuthStateChanged(async (user) => {
+            currentUser = user;
+            if (user) {
+                try {
+                    const token = await user.getIdToken();
+                    const res = await fetch('/api/check_admin', {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    const data = await res.json();
+                    
+                    if (data.isAdmin) {
+                        localStorage.setItem('bankxy_admin_token', token);
+                        localStorage.setItem('bankxy_admin_email', user.email);
+                        window.location.href = '/admin';
+                        return;
+                    }
+                } catch (error) {
+                    console.error("Admin check failed", error);
+                }
+            }
+            updateAuthUI();
+        });
+
+        async function googleLogin() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            try {
+                await auth.signInWithPopup(provider);
+                closeAuthModal();
+                showToast("Signed in successfully", "success");
+            } catch (error) {
+                console.error(error);
+                showToast(error.message, "error");
+            }
+        }
+
+        function showAuthModal() {
+            const modal = document.getElementById('auth-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                document.getElementById('auth-modal-content').classList.remove('scale-95');
+            }, 10);
+        }
+
+        function closeAuthModal() {
+            const modal = document.getElementById('auth-modal');
+            modal.classList.add('opacity-0');
+            document.getElementById('auth-modal-content').classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        function showContactModal() {
+            const modal = document.getElementById('contact-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                document.getElementById('contact-modal-content').classList.remove('scale-95');
+            }, 10);
+        }
+
+        function closeContactModal() {
+            const modal = document.getElementById('contact-modal');
+            modal.classList.add('opacity-0');
+            document.getElementById('contact-modal-content').classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        async function handleLogout() {
+            try {
+                await auth.signOut();
+                localStorage.removeItem('bankxy_admin_token');
+                localStorage.removeItem('bankxy_admin_email');
+                showToast("Signed out", "info");
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        function updateAuthUI() {
+            const btnLogin = document.getElementById('btn-login');
+            const btnSignup = document.getElementById('btn-signup');
+            const profileArea = document.getElementById('user-profile');
+            const guestBanner = document.getElementById('guest-banner');
+            const historyMsg = document.getElementById('stat-history-msg');
+
+            if (currentUser) {
+                btnLogin.classList.add('hidden');
+                btnSignup.classList.add('hidden');
+                profileArea.classList.remove('hidden');
+                document.getElementById('user-email').innerText = currentUser.email.split('@')[0];
+                document.getElementById('dropdown-email').innerText = currentUser.email;
+                if (guestBanner) guestBanner.classList.add('hidden');
+            } else {
+                btnLogin.classList.remove('hidden');
+                btnSignup.classList.remove('hidden');
+                profileArea.classList.add('hidden');
+                if (guestBanner) guestBanner.classList.remove('hidden');
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthUI();
+        });
+
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BANKXY | Privacy Policy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'], },
+                    colors: { primary: '#06b6d4', secondary: '#3b82f6', darkbg: '#0f172a', cardbg: '#1e293b', }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col">
+    <!-- Navbar -->
+    <nav class="glass-panel sticky top-0 z-40 px-6 py-4 flex justify-between items-center shadow-lg">
+        <a href="/" class="flex items-center gap-2 cursor-pointer">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="BANKXY Logo" class="h-12 w-auto">
+            <span class="text-xl font-bold tracking-wider text-white">BANKXY</span>
+        </a>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow flex flex-col items-center p-6 relative">
+        <div class="glass-panel w-full max-w-4xl rounded-2xl p-10 shadow-2xl mt-8">
+            <h1 class="text-3xl font-bold mb-6 text-white border-b border-slate-700 pb-4">Privacy Policy</h1>
+            
+            <div class="space-y-6 text-slate-300 text-sm leading-relaxed">
+                <section>
+                    <h2 class="text-xl font-semibold text-white mb-2">1. Introduction</h2>
+                    <p>At BANKXY, your privacy and data security are our highest priorities. This Privacy Policy outlines how we handle the information you provide while using our secure bank statement conversion services.</p>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-semibold text-white mb-2">2. Zero-Retention Policy for Financial Data</h2>
+                    <p>We do not store, retain, or share your bank statements, PDF files, or the converted Excel files. All files are processed completely in memory and are <strong>instantly deleted</strong> from our servers the moment the conversion process finishes.</p>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-semibold text-white mb-2">3. Data We Collect</h2>
+                    <p>We collect minimal usage data strictly for system reliability and analytics, which may include:</p>
+                    <ul class="list-disc pl-5 mt-2 space-y-1">
+                        <li>The bank format selected or auto-detected.</li>
+                        <li>Conversion success or failure status (to improve our parser accuracy).</li>
+                        <li>Email addresses (only if you choose to sign up or contact us).</li>
+                    </ul>
+                    <p class="mt-2">This analytics data contains <strong>no personal financial information</strong>.</p>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-semibold text-white mb-2">4. Security Measures</h2>
+                    <p>All data transmitted to and from BANKXY is encrypted using industry-standard protocols. Our processing environment is secured to ensure that your financial data is protected from unauthorized access during the brief moment of processing.</p>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-semibold text-white mb-2">5. Contact Us</h2>
+                    <p>If you have any questions about this Privacy Policy, please contact us at <a href="mailto:contact.bankxy@gmail.com" class="text-primary hover:underline">contact.bankxy@gmail.com</a>.</p>
+                </section>
+            </div>
+            
+            <div class="mt-10 pt-6 border-t border-slate-700">
+                <a href="/" class="text-primary hover:text-white transition-colors flex items-center gap-2 text-sm font-medium">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Home
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <footer class="border-t border-slate-800 bg-slate-900 mt-auto py-6 text-center">
+        <div class="text-slate-500 text-sm">&copy; 2026 BANKXY. All rights reserved.</div>
+    </footer>
+</body>
+</html>
