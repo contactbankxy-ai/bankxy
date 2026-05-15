@@ -298,12 +298,16 @@ def api_convert():
         # ── 8. Update database ────────────────────────────────────────────
         database.log_conversion(detected_bank.upper(), "success", os.path.getsize(tmp.name), "guest", report.is_scanned_pdf, 0)
 
+        # Use original filename but change extension to .xlsx
+        original_filename = file.filename
+        base_name = os.path.splitext(original_filename)[0]
+        excel_filename = f"{base_name}.xlsx"
+
         return jsonify({
             "status":            "success",
             "message":           "Statement processed and validated successfully.",
-            "detected_bank":     detected_bank.upper(),
             "preview":           preview,
-            "filename":          f"{detected_bank.upper()}_Statement.xlsx",
+            "filename":          excel_filename,
             "excel_base64":      excel_b64,
             "validation_report": report_dict,
         })
