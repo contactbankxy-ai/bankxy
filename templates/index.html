@@ -332,6 +332,20 @@
                 <div class="flex items-center gap-2"><i class="fa-brands fa-python text-2xl"></i><span
                         class="text-sm font-medium">Advanced Parsing Engine</span></div>
             </div>
+
+            <!-- Internal Processing -->
+            <div class="mt-12 flex flex-col items-center">
+                <button onclick="window.location.href='http://192.168.0.136:5000'"
+                    class="glass-panel border border-slate-700 hover:border-primary hover:bg-slate-800/80 text-white font-bold py-4 px-10 rounded-2xl shadow-xl hover:shadow-cyan-500/20 transform transition-all hover:-translate-y-1 flex items-center gap-3 group">
+                    <i
+                        class="fa-solid fa-network-wired text-xl text-slate-400 group-hover:text-primary transition-colors"></i>
+                    <span class="text-lg tracking-wide">Internal Processing</span>
+                </button>
+                <p
+                    class="text-sm text-slate-500 mt-3 flex items-center gap-1.5 bg-slate-900/50 px-3 py-1 rounded-full border border-slate-800">
+                    <i class="fa-solid fa-building-lock text-xs"></i> Available only inside office network
+                </p>
+            </div>
         </section>
 
         <!-- DASHBOARD SECTION (Removed for normal users) -->
@@ -371,7 +385,8 @@
             <p class="text-slate-400 text-sm mb-6">Sign in to securely access your data and advanced features.</p>
 
             <div class="space-y-4">
-                <button onclick="googleLogin()" class="w-full bg-white text-slate-900 hover:bg-slate-200 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors">
+                <button onclick="googleLogin()"
+                    class="w-full bg-white text-slate-900 hover:bg-slate-200 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-3 transition-colors">
                     <img src="https://www.svgrepo.com/show/475656/google-color.svg" class="w-5 h-5" alt="Google">
                     Continue with Google
                 </button>
@@ -381,29 +396,38 @@
     </div>
 
     <!-- Contact Modal Overlay -->
-    <div id="contact-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
-        <div class="glass-panel w-full max-w-md p-8 rounded-2xl shadow-2xl border border-slate-700 transform scale-95 transition-transform duration-300" id="contact-modal-content">
+    <div id="contact-modal"
+        class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex justify-center items-center opacity-0 transition-opacity duration-300">
+        <div class="glass-panel w-full max-w-md p-8 rounded-2xl shadow-2xl border border-slate-700 transform scale-95 transition-transform duration-300"
+            id="contact-modal-content">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-2xl font-bold text-white">Contact Us</h3>
                 <button onclick="closeContactModal()" class="text-slate-400 hover:text-white transition-colors">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
-            
-            <p class="text-slate-400 text-sm mb-6">Reach out to us at <a href="mailto:contact.bankxy@gmail.com" class="text-primary hover:underline">contact.bankxy@gmail.com</a> or use the form below to send an email directly to our support team.</p>
+
+            <p class="text-slate-400 text-sm mb-6">Reach out to us at <a href="mailto:contact.bankxy@gmail.com"
+                    class="text-primary hover:underline">contact.bankxy@gmail.com</a> or use the form below to send an
+                email directly to our support team.</p>
 
             <form action="https://formsubmit.co/contact.bankxy@gmail.com" method="POST" class="space-y-4">
                 <input type="hidden" name="_subject" value="New message from BANKXY Contact Form">
                 <input type="hidden" name="_captcha" value="false">
                 <input type="hidden" name="_next" value="http://localhost:5000/">
-                
+
                 <div>
-                    <input type="email" name="email" placeholder="Your Email address" class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-3 outline-none" required>
+                    <input type="email" name="email" placeholder="Your Email address"
+                        class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-3 outline-none"
+                        required>
                 </div>
                 <div>
-                    <textarea name="message" placeholder="How can we help you?" rows="4" class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-3 outline-none resize-none" required></textarea>
+                    <textarea name="message" placeholder="How can we help you?" rows="4"
+                        class="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg focus:ring-primary focus:border-primary block p-3 outline-none resize-none"
+                        required></textarea>
                 </div>
-                <button type="submit" class="w-full bg-gradient-to-r from-primary to-secondary hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-3 rounded-xl shadow-lg transition-all">
+                <button type="submit"
+                    class="w-full bg-gradient-to-r from-primary to-secondary hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-3 rounded-xl shadow-lg transition-all">
                     Send Message
                 </button>
             </form>
@@ -505,7 +529,7 @@
         }
 
         // --- Core Upload & Processing Logic ---
-        let currentExcelBase64 = null;
+        let currentFileId = null;
         let currentFilename = "Statement.xlsx";
 
         async function handleUpload() {
@@ -550,7 +574,7 @@
                 else if (simulatedPct < 60) progressText.innerText = "Detecting bank format...";
                 else if (simulatedPct < 85) progressText.innerText = "Parsing transactions...";
                 else progressText.innerText = "Finalizing data...";
-            }, 350); // Updates every 350ms, taking ~6-7 seconds to reach 99%
+            }, 100); // Faster updates (100ms) to feel more responsive
 
             try {
                 const response = await fetch('/api/convert', { method: 'POST', body: formData });
@@ -562,14 +586,10 @@
                 progressText.innerText = "Complete!";
 
                 if (data.status === "success") {
-                    setTimeout(() => {
-                        showSuccessResult(data);
-                    }, 400);
+                    showSuccessResult(data);
                 } else if (data.status === "blocked") {
-                    setTimeout(() => {
-                        showBlockedResult(data);
-                        showToast("Export blocked.", 'error');
-                    }, 400);
+                    showBlockedResult(data);
+                    showToast("Export blocked.", 'error');
                 } else {
                     throw new Error(data.message || "Failed to process the statement.");
                 }
@@ -589,13 +609,17 @@
             if (document.getElementById('blocked-panel')) document.getElementById('blocked-panel').classList.add('hidden');
             document.getElementById('success-panel').classList.remove('hidden');
 
-            currentExcelBase64 = data.excel_base64;
+            currentFileId = data.file_id;
             currentFilename = data.filename;
 
             document.getElementById('btn-download').onclick = () => {
-                downloadBase64Excel(currentExcelBase64, currentFilename);
+                triggerDownload(currentFileId, currentFilename);
                 showToast("Download started!", "success");
             };
+
+            // Auto-trigger download for a "faster" experience
+            triggerDownload(currentFileId, currentFilename);
+            showToast("Download started automatically!", "success");
         }
 
         function showBlockedResult(data) {
@@ -627,10 +651,9 @@
             document.getElementById('pdf-password').value = "";
         }
 
-        function downloadBase64Excel(base64Data, filename) {
+        function triggerDownload(fileId, filename) {
             const link = document.createElement("a");
-            link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${base64Data}`;
-            link.download = filename;
+            link.href = `/api/download/${fileId}?name=${encodeURIComponent(filename)}`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -661,7 +684,7 @@
                         headers: { 'Authorization': 'Bearer ' + token }
                     });
                     const data = await res.json();
-                    
+
                     if (data.isAdmin) {
                         localStorage.setItem('bankxy_admin_token', token);
                         localStorage.setItem('bankxy_admin_email', user.email);

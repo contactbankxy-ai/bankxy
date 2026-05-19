@@ -19,6 +19,9 @@ import json
 import logging
 import shutil
 import tempfile
+import time
+import uuid
+import gc
 from datetime import datetime
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -44,7 +47,11 @@ IP_FILE     = os.path.join(BASE_DIR, "ip_pdf_count.json")
 FAILED_DIR  = os.path.join(BASE_DIR, "failed_pdfs")
 os.makedirs(FAILED_DIR, exist_ok=True)
 
+EXCEL_DIR = os.path.join(BASE_DIR, "temp_excel")
+os.makedirs(EXCEL_DIR, exist_ok=True)
+
 app = Flask(__name__, static_folder="static", template_folder="templates")
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB upload limit to prevent OOM
 
 import database
 from firebase_admin import auth
@@ -113,6 +120,18 @@ def privacy():
 @app.route("/terms")
 def terms():
     return render_template("terms.html")
+
+@app.route("/test-pyodide")
+def test_pyodide():
+    return render_template("pyodide_test.html")
+
+@app.route("/src/<path:filename>")
+def serve_src(filename):
+    # Security: only allow serving specific python files for the PoC
+    allowed_files = ["bank_parsers.py", "validation_engine.py"]
+    if filename in allowed_files:
+        return send_from_directory(BASE_DIR, filename, mimetype="text/plain")
+    return "Not allowed", 403
 
 @app.route("/api/check_admin", methods=["GET"])
 def check_admin():
@@ -282,11 +301,10 @@ def api_convert():
                 "validation_report": report_dict,
             }), 422
 
-        # ── 7. Build Excel in-memory ──────────────────────────────────────
-        buf = io.BytesIO()
-        df.to_excel(buf, index=False)
-        buf.seek(0)
-        excel_b64 = base64.b64encode(buf.read()).decode("utf-8")
+        # ── 7. Build Excel to disk instead of memory ──────────────────────
+        file_id = str(uuid.uuid4())
+        excel_path = os.path.join(EXCEL_DIR, f"{file_id}.xlsx")
+        df.to_excel(excel_path, index=False)
 
         # Preview (top 5 rows, NaN → empty string)
         preview_df = df.head(5).fillna("")
@@ -308,7 +326,7 @@ def api_convert():
             "message":           "Statement processed and validated successfully.",
             "preview":           preview,
             "filename":          excel_filename,
-            "excel_base64":      excel_b64,
+            "file_id":           file_id,
             "validation_report": report_dict,
         })
 
@@ -324,6 +342,27 @@ def api_convert():
             os.remove(tmp.name)
         except Exception:
             pass
+        
+        # Periodic cleanup of old temp excel files (older than 1 hour)
+        try:
+            now = time.time()
+            for f in os.listdir(EXCEL_DIR):
+                fpath = os.path.join(EXCEL_DIR, f)
+                if os.path.isfile(fpath) and os.stat(fpath).st_mtime < now - 3600:
+                    os.remove(fpath)
+        except Exception:
+            pass
+            
+        # Explicit garbage collection to free memory
+        gc.collect()
+
+@app.route("/api/download/<file_id>")
+def download_excel(file_id):
+    filename = request.args.get("name", "Statement.xlsx")
+    excel_path = os.path.join(EXCEL_DIR, f"{file_id}.xlsx")
+    if not os.path.exists(excel_path):
+        return "File not found or expired.", 404
+    return send_from_directory(EXCEL_DIR, f"{file_id}.xlsx", as_attachment=True, download_name=filename)
 
 # ── Admin / ops routes ─────────────────────────────────────────────────────
 @app.route("/ip-stats")
@@ -339,4 +378,4 @@ def list_failed():
 
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)

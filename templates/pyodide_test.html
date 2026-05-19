@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BANKXY Pyodide PoC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+</head>
+<body class="bg-slate-900 text-white p-8 font-sans">
+    <div class="max-w-3xl mx-auto">
+        <h1 class="text-3xl font-bold mb-4 text-cyan-400">Pyodide Proof of Concept</h1>
+        <p class="text-slate-400 mb-8">This page runs Python directly in your browser using WebAssembly. No server processing!</p>
+
+        <div class="bg-slate-800 p-6 rounded-xl mb-6 border border-slate-700">
+            <h2 class="text-xl font-semibold mb-2">Step 1: Environment Status</h2>
+            <div id="status" class="text-sm font-mono bg-slate-900 p-4 rounded text-green-400 h-48 overflow-y-auto mb-4 border border-slate-700">
+                Initializing...<br>
+            </div>
+            <button id="btn-init" class="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded text-sm font-medium transition-colors" disabled>
+                Loading Pyodide...
+            </button>
+        </div>
+
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 opacity-50 transition-opacity" id="step-2">
+            <h2 class="text-xl font-semibold mb-4">Step 2: Process PDF Locally</h2>
+            <div class="flex gap-4 items-center">
+                <input type="file" id="pdf-upload" accept=".pdf" class="block w-full text-sm text-slate-400
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-cyan-900 file:text-cyan-400
+                    hover:file:bg-cyan-800" disabled>
+            </div>
+            <div id="result-log" class="mt-4 text-sm font-mono bg-slate-900 p-4 rounded text-slate-300 h-32 overflow-y-auto border border-slate-700 hidden">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pyodide = null;
+
+        function log(msg, error=false) {
+            const statusDiv = document.getElementById('status');
+            const color = error ? 'text-red-400' : 'text-green-400';
+            statusDiv.innerHTML += `<span class="${color}">${msg}</span><br>`;
+            statusDiv.scrollTop = statusDiv.scrollHeight;
+            console.log(msg);
+        }
+
+        function resultLog(msg) {
+            const rl = document.getElementById('result-log');
+            rl.classList.remove('hidden');
+            rl.innerHTML += `> ${msg}<br>`;
+            rl.scrollTop = rl.scrollHeight;
+        }
+
+        async function initPyodide() {
+            const btn = document.getElementById('btn-init');
+            try {
+                log("Loading pyodide.js...");
+                pyodide = await loadPyodide();
+                log("Pyodide loaded. Loading micropip...");
+                await pyodide.loadPackage("micropip");
+                const micropip = pyodide.pyimport("micropip");
+                
+                log("Installing core packages (pandas, pdfminer.six, Pillow)...");
+                await micropip.install(['pandas', 'pdfminer.six', 'Pillow']);
+                
+                log("Installing pdfplumber without C-dependencies...");
+                // Install pdfplumber without dependencies to avoid the pypdfium2 C++ wheel error
+                await micropip.install('pdfplumber', {deps: false});
+                
+                log("Dependencies installed successfully!");
+
+                log("Fetching backend Python scripts...");
+                
+                const filesToFetch = ['bank_parsers.py', 'validation_engine.py'];
+                for (const file of filesToFetch) {
+                    const response = await fetch('/src/' + file);
+                    if (!response.ok) throw new Error(`Failed to fetch ${file}`);
+                    const text = await response.text();
+                    pyodide.FS.writeFile(file, text);
+                    log(`Loaded ${file} into virtual FS.`);
+                }
+
+                log("Environment ready!");
+                btn.innerText = "Environment Ready";
+                btn.classList.replace('bg-cyan-600', 'bg-green-600');
+                btn.classList.replace('hover:bg-cyan-500', 'hover:bg-green-500');
+                
+                const step2 = document.getElementById('step-2');
+                step2.classList.remove('opacity-50');
+                document.getElementById('pdf-upload').disabled = false;
+
+            } catch (err) {
+                log(`Error: ${err.message}`, true);
+                btn.innerText = "Failed to load";
+                btn.classList.replace('bg-cyan-600', 'bg-red-600');
+            }
+        }
+
+        document.getElementById('pdf-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            resultLog(`Reading ${file.name}...`);
+            const arrayBuffer = await file.arrayBuffer();
+            const uint8Array = new Uint8Array(arrayBuffer);
+            
+            // Write PDF to Pyodide virtual FS
+            const tempFilename = "uploaded_statement.pdf";
+            pyodide.FS.writeFile(tempFilename, uint8Array);
+            resultLog(`Saved ${file.name} to virtual FS as ${tempFilename}`);
+
+            resultLog("Running bank_parsers.py natively in browser...");
+
+            try {
+                // Execute a Python script that runs the parser
+                const pythonCode = `
+import sys
+import os
+import base64
+import io
+import json
+import traceback
+
+# Ensure the current directory is in sys.path
+if "." not in sys.path:
+    sys.path.insert(0, ".")
+
+# --- MOCK MISSING C-DEPENDENCIES FOR PDFPLUMBER ---
+# pdfplumber tries to import pypdfium2 for image rendering, which we don't use.
+# We mock it to prevent ImportError when importing pdfplumber.
+import types
+sys.modules['pypdfium2'] = types.ModuleType('pypdfium2')
+# --------------------------------------------------
+
+def process_pdf(pdf_path):
+    try:
+        from bank_parsers import detect_bank, run_parser_chain
+        from validation_engine import ValidationEngine
+        
+        bank = detect_bank(pdf_path)
+        print(f"Detected bank: {bank}")
+        
+        df, page_count, parser_used = run_parser_chain(bank, pdf_path, None)
+        print(f"Parsed {len(df)} rows using {parser_used}")
+        
+        validator = ValidationEngine()
+        df, report = validator.run(df, pdf_path, page_count, None)
+        
+        print(f"Validation Score: {report.confidence_score}")
+        
+        # Build Excel
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False)
+        buf.seek(0)
+        excel_b64 = base64.b64encode(buf.read()).decode("utf-8")
+        
+        return json.dumps({
+            "status": "success",
+            "bank": bank,
+            "rows": len(df),
+            "score": report.confidence_score,
+            "excel_base64": excel_b64
+        })
+    except Exception as e:
+        err = traceback.format_exc()
+        print(err)
+        return json.dumps({"status": "error", "message": str(e), "traceback": err})
+
+# Capture standard output
+from io import StringIO
+old_stdout = sys.stdout
+sys.stdout = mystdout = StringIO()
+
+result_json = process_pdf("${tempFilename}")
+
+sys.stdout = old_stdout
+stdout_val = mystdout.getvalue()
+
+import js
+js.window.pythonStdout = stdout_val
+result_json
+`;
+                const resultStr = await pyodide.runPythonAsync(pythonCode);
+                
+                // Log python prints
+                if (window.pythonStdout) {
+                    resultLog("--- Python Logs ---");
+                    resultLog(window.pythonStdout.replace(/\n/g, '<br>'));
+                }
+
+                const result = JSON.parse(resultStr);
+                
+                if (result.status === "success") {
+                    resultLog(`Success! Extracted ${result.rows} rows. Score: ${result.score}`);
+                    
+                    // Trigger download
+                    const link = document.createElement("a");
+                    link.href = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${result.excel_base64}`;
+                    link.download = file.name.replace('.pdf', '.xlsx');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    resultLog("Triggered local download.");
+                } else {
+                    resultLog(`Error: ${result.message}`, true);
+                }
+
+            } catch (err) {
+                resultLog(`Exception: ${err.message}`, true);
+            }
+        });
+
+        // Start initialization on load
+        initPyodide();
+    </script>
+</body>
+</html>
